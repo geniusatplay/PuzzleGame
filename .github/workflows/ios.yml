@@ -1,0 +1,85 @@
+# Builds Contraptopus for iPhone on GitHub's macOS runners and publishes an unsigned .ipa
+# (ad-hoc signature only) for sideloading with Sideloadly.
+# Input: the Xcode project from Godot's iOS export, zipped and split into
+# Contraptopus-iOS.zip.part* (device slices only).
+name: Build iPhone IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Godot 4.7's iOS library is built against the iOS 26 SDK, so the runner's
+      # default Xcode 16 can't link it: use the newest Xcode 26 that is installed.
+      - name: Pick Xcode 26
+        run: |
+          ls -d /Applications/Xcode*.app
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          if [ -z "$XC" ]; then XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1); fi
+          if [ -z "$XC" ]; then echo "No Xcode 26 on this runner"; exit 1; fi
+          echo "Using $XC"
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+
+      - name: Unpack the Xcode project
+        run: |
+          cat Contraptopus-iOS.zip.part* > Contraptopus-iOS.zip
+          unzip -q Contraptopus-iOS.zip
+          ls -la Contraptopus-iOS
+
+      - name: Build (unsigned, device)
+        working-directory: Contraptopus-iOS
+        run: |
+          set -o pipefail
+          xcodebuild build -project Contraptopus.xcodeproj -scheme Contraptopus \
+            -configuration Release -sdk iphoneos -derivedDataPath build \
+            PRODUCT_BUNDLE_IDENTIFIER=com.emeraldvortexgames.contraptopus.dev \
+            DEVELOPMENT_TEAM="" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            2>&1 | tee xcodebuild.log | tail -60
+
+      - name: Show the build errors
+        if: failure()
+        working-directory: Contraptopus-iOS
+        run: grep -nE "error:|fatal|Undefined symbol" xcodebuild.log | head -200 || true
+
+      - name: Package the IPA
+        working-directory: Contraptopus-iOS
+        run: |
+          APP=build/Build/Products/Release-iphoneos/Contraptopus.app
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$APP/Info.plist")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          ls -la "$APP" | head -30
+          test -f "$APP/Contraptopus.pck"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          # Ad-hoc signature (no certificate): Sideloadly re-signs it with your Apple ID.
+          codesign --force --deep --sign - Payload/Contraptopus.app
+          codesign -dv Payload/Contraptopus.app
+          zip -qry "../Contraptopus-v$VERSION.ipa" Payload
+          ls -la ../*.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Contraptopus-v${{ env.VERSION }}-ipa
+          path: Contraptopus-v*.ipa
+          retention-days: 30
+
+      - name: Put the latest IPA on the ipa branch
+        run: |
+          mkdir -p /tmp/out && cp Contraptopus-v*.ipa /tmp/out/
+          cd /tmp/out
+          git init -q -b ipa
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add . && git commit -q -m "IPA v$VERSION (${GITHUB_SHA::7})"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ipa
