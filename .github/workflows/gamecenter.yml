@@ -1,0 +1,62 @@
+# Builds the Game Center add-on for Physics Chain (gamecenter/: a GDExtension in Objective-C++) on a Mac and puts the
+# xcframework on the gamecenter-bin branch, where the game's iOS export picks it up (addons/pc_gamecenter/bin/).
+name: Build Game Center add-on
+
+on:
+  push:
+    branches: [main]
+    paths: ["gamecenter/**", ".github/workflows/gamecenter.yml"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick Xcode 26
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          if [ -z "$XC" ]; then XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1); fi
+          sudo xcode-select -s "$XC/Contents/Developer"
+          xcodebuild -version
+
+      - name: Get godot-cpp and SCons
+        working-directory: gamecenter
+        run: |
+          git clone --depth 1 https://github.com/godotengine/godot-cpp godot-cpp
+          git -C godot-cpp log --oneline -1
+          pip3 install --break-system-packages scons || pip3 install scons
+          gunzip -k api/extension_api.json.gz
+
+      - name: Build
+        working-directory: gamecenter
+        run: |
+          set -o pipefail
+          ARGS="platform=ios arch=arm64 target=template_release ios_min_version=14.0 custom_api_file=api/extension_api.json"
+          if grep -q "gdextension_interface.json" godot-cpp/SConstruct godot-cpp/tools/*.py 2>/dev/null; then
+            ARGS="$ARGS custom_interface_file=api/gdextension_interface.json"
+          fi
+          echo "scons $ARGS"
+          scons $ARGS -j4 2>&1 | tee build.log | tail -40
+          ls -la bin
+          ./build_framework.sh
+
+      - name: Show the build errors
+        if: failure()
+        working-directory: gamecenter
+        run: grep -nE "error|Error" build.log | head -80 || true
+
+      - name: Put it on the gamecenter-bin branch
+        run: |
+          mkdir -p /tmp/out && cp -R gamecenter/bin/libpcgamecenter.ios.template_release.xcframework /tmp/out/
+          cp gamecenter/pc_gamecenter.gdextension /tmp/out/
+          cd /tmp/out
+          git init -q -b gamecenter-bin
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add . && git commit -q -m "Game Center add-on (${GITHUB_SHA::7})"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gamecenter-bin

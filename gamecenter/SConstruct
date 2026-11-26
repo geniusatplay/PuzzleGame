@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+# Builds the Game Center add-on for iPhone/iPad (macOS only):
+#   git clone https://github.com/godotengine/godot-cpp godot-cpp
+#   scons platform=ios arch=arm64 target=template_release custom_api_file=api/extension_api.json
+# then build_framework.sh wraps the library as libpcgamecenter.ios.template_release.xcframework.
+env = SConscript("godot-cpp/SConstruct")
+env.Append(CPPPATH=["src/"])
+env.Append(CCFLAGS=["-fobjc-arc"])
+env.Append(LINKFLAGS=["-framework", "GameKit", "-framework", "UIKit", "-framework", "Foundation"])
+sources = Glob("src/*.cpp") + Glob("src/*.mm")
+library = env.SharedLibrary("bin/libpcgamecenter{}{}".format(env["suffix"], env["SHLIBSUFFIX"]), source=sources)
+Default(library)
