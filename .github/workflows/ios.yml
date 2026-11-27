@@ -5,6 +5,8 @@
 # Signing is automatic: Xcode makes or reuses the distribution certificate and App Store profile with the App Store
 # Connect API key. Needs the repo secret ASC_KEY_P8 (the text of AuthKey_65B2KVSQGL.p8, kept in the owner's
 # "Physics Chain Signing (private)" folder). Without it the build still runs, unsigned, as a check.
+# Ads (Nov 27 2026): the game's AdMob add-on (admob/) finds Google's ad library at run time; the library itself
+# (Google-Mobile-Ads-SDK) is added here with CocoaPods, and the workspace is built instead of the bare project.
 name: Build iPhone (TestFlight)
 
 on:
@@ -49,6 +51,22 @@ jobs:
           echo "BUILD=$BUILD" >> "$GITHUB_ENV"
           echo "VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$PLIST")" >> "$GITHUB_ENV"
 
+      - name: Add Google Mobile Ads (CocoaPods)
+        working-directory: PhysicsChain-iOS
+        run: |
+          cat > Podfile <<'POD'
+          platform :ios, '14.0'
+          target 'PhysicsChain' do
+            pod 'Google-Mobile-Ads-SDK', '~> 13.0'
+          end
+          POD
+          pod --version
+          pod install --repo-update 2>&1 | tail -20
+          ls -d *.xcworkspace
+          # the game's own linker flags (GDExtension entry points) live on the project; CocoaPods' target settings
+          # reach them through $(inherited)
+          grep -n "OTHER_LDFLAGS" "Pods/Target Support Files/Pods-PhysicsChain/Pods-PhysicsChain.release.xcconfig"
+
       - name: App Store Connect key
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
@@ -63,7 +81,7 @@ jobs:
         working-directory: PhysicsChain-iOS
         run: |
           set -o pipefail
-          xcodebuild archive -project PhysicsChain.xcodeproj -scheme PhysicsChain -configuration Release \
+          xcodebuild archive -workspace PhysicsChain.xcworkspace -scheme PhysicsChain -configuration Release \
             -sdk iphoneos -destination "generic/platform=iOS" -archivePath build/PhysicsChain.xcarchive \
             -allowProvisioningUpdates -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
             -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID \
@@ -99,7 +117,7 @@ jobs:
         working-directory: PhysicsChain-iOS
         run: |
           set -o pipefail
-          xcodebuild build -project PhysicsChain.xcodeproj -scheme PhysicsChain -configuration Release -sdk iphoneos \
+          xcodebuild build -workspace PhysicsChain.xcworkspace -scheme PhysicsChain -configuration Release -sdk iphoneos \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             2>&1 | tee xcodebuild.log | tail -60
 

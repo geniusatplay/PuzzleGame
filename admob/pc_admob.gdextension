@@ -1,0 +1,11 @@
+; AdMob ads between levels (iPhone/iPad only). tools/export_ios.sh copies this into addons/pc_admob/ for the iOS
+; export only, so other platforms don't load an extension they have no library for.
+[configuration]
+
+entry_symbol = "pc_admob_init"
+compatibility_minimum = "4.5"
+
+[libraries]
+
+ios.debug = "res://addons/pc_admob/bin/libpcadmob.ios.template_release.xcframework"
+ios.release = "res://addons/pc_admob/bin/libpcadmob.ios.template_release.xcframework"
