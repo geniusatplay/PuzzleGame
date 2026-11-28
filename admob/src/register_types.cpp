@@ -13,6 +13,8 @@ static void initialize_pc_admob(ModuleInitializationLevel p_level) {
 		return;
 	}
 	GDREGISTER_CLASS(PCAdMob);
+	GDREGISTER_CLASS(PCFirebase);
+	GDREGISTER_CLASS(PCStore);
 }
 
 static void uninitialize_pc_admob(ModuleInitializationLevel p_level) {

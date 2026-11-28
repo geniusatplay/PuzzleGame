@@ -1,14 +1,15 @@
 #!/usr/bin/env python
-# Builds the AdMob add-on for iPhone/iPad (macOS only):
+# Builds the ads / consent / Firebase / StoreKit add-on for iPhone/iPad (macOS only):
 #   git clone https://github.com/godotengine/godot-cpp godot-cpp
 #   scons platform=ios arch=arm64 target=template_release custom_api_file=api/extension_api.json
 # then build_framework.sh wraps the library as libpcadmob.ios.template_release.xcframework.
-# The add-on reaches Google's ad library through the Objective-C runtime, so it builds without it; the app links
-# Google-Mobile-Ads-SDK through CocoaPods (PuzzleGame's ios.yml).
+# The add-on reaches Google's libraries (ads, consent, Firebase) through the Objective-C runtime, so it builds without
+# them; the app links Google-Mobile-Ads-SDK, FirebaseAnalytics and FirebaseCrashlytics through CocoaPods (PuzzleGame's
+# ios.yml). StoreKit is Apple's and is linked here.
 env = SConscript("godot-cpp/SConstruct")
 env.Append(CPPPATH=["src/"])
 env.Append(CCFLAGS=["-fobjc-arc"])
-env.Append(LINKFLAGS=["-framework", "UIKit", "-framework", "Foundation"])
+env.Append(LINKFLAGS=["-framework", "UIKit", "-framework", "Foundation", "-framework", "StoreKit"])
 sources = Glob("src/*.cpp") + Glob("src/*.mm")
 library = env.SharedLibrary("bin/libpcadmob{}{}".format(env["suffix"], env["SHLIBSUFFIX"]), source=sources)
 Default(library)
