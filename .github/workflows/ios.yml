@@ -58,6 +58,8 @@ jobs:
         run: |
           cat > Podfile <<'POD'
           platform :ios, '15.0'
+          # Firebase's Swift pods (Crashlytics, Sessions) need module maps when built as static libraries
+          use_modular_headers!
           target 'PhysicsChain' do
             pod 'Google-Mobile-Ads-SDK', '~> 13.0'
             pod 'FirebaseAnalytics'
